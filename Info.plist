@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Audio Capture</string>
+    <key>CFBundleExecutable</key>
+    <string>AudioCapture</string>
+    <key>CFBundleIdentifier</key>
+    <string>local.poc.AudioCapture</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Audio Capture</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.2.1</string>
+    <key>CFBundleVersion</key>
+    <string>3</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Audio Capture saves the system or app audio you select when you start a recording.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Audio Capture saves your microphone to a separate local track when you enable it.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Audio Capture uses ScreenCaptureKit to receive system audio for your recording.</string>
+</dict>
+</plist>

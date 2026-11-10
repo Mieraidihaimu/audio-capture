@@ -3,13 +3,15 @@ import Carbon
 @MainActor
 final class DictationShortcut {
     private static let identifier = EventHotKeyID(signature: 0x41436170, id: 1)
-    private let action: @MainActor () -> Void
+    private let onPress: @MainActor () -> Void
+    private let onRelease: @MainActor () -> Void
     private var handler: EventHandlerRef?
     private var hotKey: EventHotKeyRef?
     private var isPressed = false
 
-    init(action: @escaping @MainActor () -> Void) throws {
-        self.action = action
+    init(onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void) throws {
+        self.onPress = onPress
+        self.onRelease = onRelease
         var eventTypes = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
@@ -55,9 +57,11 @@ final class DictationShortcut {
         case UInt32(kEventHotKeyPressed):
             guard !isPressed else { return noErr }
             isPressed = true
-            action()
+            onPress()
         case UInt32(kEventHotKeyReleased):
+            guard isPressed else { return noErr }
             isPressed = false
+            onRelease()
         default:
             return OSStatus(eventNotHandledErr)
         }

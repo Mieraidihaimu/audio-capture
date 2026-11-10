@@ -12,6 +12,12 @@ struct AudioCaptureApp: App {
                 .accessibilityLabel(statusDescription)
         }
         .menuBarExtraStyle(.window)
+
+        Window("Transcripts", id: "transcripts") {
+            TranscriptsView(library: recorder.transcriptLibrary)
+        }
+        .defaultSize(width: 860, height: 560)
+        .defaultLaunchBehavior(.suppressed)
     }
 
     private var statusIcon: String {
@@ -30,6 +36,7 @@ struct AudioCaptureApp: App {
 
 private struct CapturePanel: View {
     @ObservedObject var recorder: Recorder
+    @Environment(\.openWindow) private var openWindow
 
     private var idle: Bool { recorder.phase == .ready }
     private var recording: Bool { recorder.phase == .recording }
@@ -46,11 +53,11 @@ private struct CapturePanel: View {
             } else {
                 captureButton
                 if !recorder.isDictating {
-                    Button("Dictate · ⌥Space", action: recorder.toggleDictation)
+                    Button("Dictate", action: recorder.toggleDictation)
                         .frame(maxWidth: .infinity)
                         .buttonStyle(.bordered)
                         .disabled(!recorder.canDictate)
-                        .help("Press Option–Space to start dictation, then press again to finish and copy the text.")
+                        .help("Click to start dictation, or hold Option–Space from any app and release to finish.")
                     Button("Transcribe a Session…", action: recorder.chooseSessionToTranscribe)
                         .buttonStyle(.link)
                         .font(.subheadline)
@@ -58,6 +65,13 @@ private struct CapturePanel: View {
                 }
             }
             messages
+            Button("Transcripts…", systemImage: "text.bubble") {
+                recorder.transcriptLibrary.reload()
+                openWindow(id: "transcripts")
+                NSApp.activate()
+            }
+            .buttonStyle(.borderless)
+            .font(.subheadline)
             Divider()
             HStack(spacing: 12) {
                 Button(action: recorder.showRecordings) {
@@ -231,7 +245,7 @@ private struct CapturePanel: View {
     }
 
     private var captureTitle: String {
-        if recorder.isDictating { return "Finish & Copy · ⌥Space" }
+        if recorder.isDictating { return "Finish & Copy" }
         return recording ? "Stop Recording" : "Start Recording"
     }
 

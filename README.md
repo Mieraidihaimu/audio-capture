@@ -22,9 +22,17 @@ Selected-app mode includes audio from all tabs and windows sharing the tapped pr
 
 ## Dictate from any app
 
-With Audio Capture running, press **Option–Space** to start microphone dictation. Press it again to finish. WhisperKit transcribes the recording and copies plain text to your clipboard, ready for **Command–V**. The menu shows **Dictation copied to clipboard** when it finishes. You can also use **Dictate · ⌥Space** in the menu.
+With Audio Capture running, hold **Option–Space** to record microphone dictation and release it to finish. A floating waveform appears in the center of the current display and responds to the microphone level. WhisperKit then transcribes the recording and copies plain text to your clipboard, ready for **Command–V**. The menu shows **Dictation copied to clipboard** when it finishes.
+
+You can also click **Dictate** in the menu, then **Finish & Copy** to end that recording.
 
 Dictation requests microphone permission on first use and saves its audio and timestamped transcript in a session folder. Use the shortcut once the current recording or transcription finishes. The menu reports a shortcut conflict if another app already uses Option–Space.
+
+## Browse transcripts
+
+Choose **Transcripts…** in the menu to browse saved transcripts. Select a transcript to read it, use **Copy Text** to copy its speech, or **Show in Finder** to open its location. **Move to Trash** moves that transcript file to the Mac's Trash.
+
+The browser discovers earlier transcripts in the Recordings folder and remembers sessions imported through **Transcribe a Session…**. Use **Refresh** to pick up changes made in Finder.
 
 ## Speech to text
 

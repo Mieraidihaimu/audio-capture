@@ -42,21 +42,39 @@ final class Recorder: ObservableObject {
 
     private static let supportFolder = URL.applicationSupportDirectory
         .appendingPathComponent("Audio Capture", isDirectory: true)
+    private static let recordingsFolder = supportFolder.appendingPathComponent("Recordings", isDirectory: true)
 
-    private let recordings = supportFolder.appendingPathComponent("Recordings", isDirectory: true)
+    private let recordings = recordingsFolder
     private let transcriber = SessionTranscriber()
+    let transcriptLibrary = TranscriptLibrary(recordings: recordingsFolder)
+    private let dictationOverlay = DictationOverlayController()
+    private var shortcutHeld = false
 
     var canStart: Bool { phase == .ready && (source != .application || selectedApp != nil) }
     var canDictate: Bool { phase == .ready || phase == .recording && isDictating }
 
     init() {
         do {
-            dictationShortcut = try DictationShortcut { [weak self] in
-                self?.toggleDictation()
-            }
+            dictationShortcut = try DictationShortcut(
+                onPress: { [weak self] in self?.beginShortcutDictation() },
+                onRelease: { [weak self] in self?.endShortcutDictation() }
+            )
         } catch {
             shortcutProblem = error.localizedDescription
         }
+    }
+
+    private func beginShortcutDictation() {
+        guard phase == .ready else { return }
+        shortcutHeld = true
+        start(dictation: true, requiresHeldShortcut: true)
+    }
+
+    private func endShortcutDictation() {
+        guard shortcutHeld else { return }
+        shortcutHeld = false
+        dictationOverlay.hide()
+        if phase == .recording, isDictating { stop() }
     }
 
     func toggleDictation() {
@@ -88,7 +106,7 @@ final class Recorder: ObservableObject {
         start(dictation: false)
     }
 
-    private func start(dictation: Bool) {
+    private func start(dictation: Bool, requiresHeldShortcut: Bool = false) {
         guard phase == .ready, dictation || canStart else { return }
         phase = .starting
         isDictating = dictation
@@ -98,12 +116,20 @@ final class Recorder: ObservableObject {
         systemReading = TrackReading()
         micReading = TrackReading()
         elapsed = .zero
+        if dictation { dictationOverlay.show(requiresHeldShortcut: requiresHeldShortcut) }
 
         Task {
             do {
                 if dictation || includeMic { try await MicrophoneInput.authorize() }
+                if requiresHeldShortcut, !shortcutHeld {
+                    isDictating = false
+                    phase = .ready
+                    dictationOverlay.hide()
+                    return
+                }
                 let folder = try makeSessionFolder()
                 self.folder = folder
+                transcriptLibrary.busySession = folder
                 if !dictation {
                     let systemURL = RecordingTrack.system.audioURL(in: folder)
                     switch source {
@@ -136,6 +162,7 @@ final class Recorder: ObservableObject {
                 }
 
                 phase = .recording
+                if dictation { dictationOverlay.update(level: 0, isStarting: false) }
                 startMonitor()
             } catch {
                 await finish(reason: error.localizedDescription)
@@ -145,6 +172,8 @@ final class Recorder: ObservableObject {
 
     func stop() {
         guard phase == .recording else { return }
+        shortcutHeld = false
+        dictationOverlay.hide()
         phase = .stopping
         let dictation = isDictating
         Task {
@@ -210,6 +239,7 @@ final class Recorder: ObservableObject {
 
     private func transcribe(session: URL, copyToClipboard: Bool = false) {
         phase = .transcribing
+        transcriptLibrary.busySession = session
         transcriptionProblem = nil
         transcriptionStage = "Preparing transcription…"
         transcription = Task {
@@ -217,6 +247,8 @@ final class Recorder: ObservableObject {
                 transcription = nil
                 transcriptionStage = nil
                 phase = .ready
+                transcriptLibrary.busySession = nil
+                transcriptLibrary.rememberSession(session)
             }
             do {
                 let summary = try await transcriber.transcribe(session: session) { [weak self] stage in
@@ -278,6 +310,7 @@ final class Recorder: ObservableObject {
             while let self, !Task.isCancelled {
                 systemReading = readSystem?() ?? TrackReading()
                 micReading = mic?.reading ?? TrackReading()
+                if isDictating { dictationOverlay.update(level: micReading.level, isStarting: false) }
                 elapsed = start.duration(to: .now)
                 if let error = systemReading.error ?? micReading.error {
                     phase = .stopping
@@ -293,6 +326,8 @@ final class Recorder: ObservableObject {
         reason: String? = nil, transcribeAfterSaving: Bool = false, copyToClipboard: Bool = false
     ) async {
         phase = .stopping
+        shortcutHeld = false
+        dictationOverlay.hide()
         monitor?.cancel()
         monitor = nil
 
@@ -326,6 +361,9 @@ final class Recorder: ObservableObject {
         phase = .ready
         if transcribeAfterSaving, let savedSession {
             transcribe(session: savedSession, copyToClipboard: copyToClipboard && errors.isEmpty)
+        } else {
+            transcriptLibrary.busySession = nil
+            transcriptLibrary.reload()
         }
     }
 }

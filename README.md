@@ -20,6 +20,12 @@ A native menu bar recorder with WhisperKit transcription for **macOS Tahoe 26 or
 
 Selected-app mode includes audio from all tabs and windows sharing the tapped processes. The tap can restore previously tapped processes by bundle ID when they relaunch. If the app starts an additional audio helper, play audio and refresh the list before starting a new session.
 
+## Dictate from any app
+
+With Audio Capture running, press **Option–Space** to start microphone dictation. Press it again to finish. WhisperKit transcribes the recording and copies plain text to your clipboard, ready for **Command–V**. The menu shows **Dictation copied to clipboard** when it finishes. You can also use **Dictate · ⌥Space** in the menu.
+
+Dictation requests microphone permission on first use and saves its audio and timestamped transcript in a session folder. Use the shortcut once the current recording or transcription finishes. The menu reports a shortcut conflict if another app already uses Option–Space.
+
 ## Speech to text
 
 Transcription runs locally after capture and detects the spoken language. The app includes the multilingual Whisper Base model and tokenizer. Transcription works offline from the first run. Audio stays on this Mac. [Argmax Whisper Base model files](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main/openai_whisper-base)

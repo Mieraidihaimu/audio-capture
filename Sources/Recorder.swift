@@ -29,9 +29,12 @@ final class Recorder: ObservableObject {
     @Published private(set) var elapsed = Duration.zero
     @Published private(set) var transcriptionStage: String?
     @Published private(set) var transcriptionProblem: String?
+    @Published private(set) var isDictating = false
+    @Published private(set) var shortcutProblem: String?
 
     private var monitor: Task<Void, Never>?
     private var transcription: Task<Void, Never>?
+    private var dictationShortcut: DictationShortcut?
     private var readSystem: (() -> TrackReading)?
     private var stopSystem: (() async -> String?)?
     private var mic: MicrophoneInput?
@@ -44,6 +47,28 @@ final class Recorder: ObservableObject {
     private let transcriber = SessionTranscriber()
 
     var canStart: Bool { phase == .ready && (source != .application || selectedApp != nil) }
+    var canDictate: Bool { phase == .ready || phase == .recording && isDictating }
+
+    init() {
+        do {
+            dictationShortcut = try DictationShortcut { [weak self] in
+                self?.toggleDictation()
+            }
+        } catch {
+            shortcutProblem = error.localizedDescription
+        }
+    }
+
+    func toggleDictation() {
+        switch phase {
+        case .ready:
+            start(dictation: true)
+        case .recording where isDictating:
+            stop()
+        default:
+            break
+        }
+    }
 
     func refreshApps() {
         guard phase == .ready else { return }
@@ -60,8 +85,13 @@ final class Recorder: ObservableObject {
     }
 
     func start() {
-        guard canStart else { return }
+        start(dictation: false)
+    }
+
+    private func start(dictation: Bool) {
+        guard phase == .ready, dictation || canStart else { return }
         phase = .starting
+        isDictating = dictation
         status = nil
         problem = nil
         transcriptionProblem = nil
@@ -71,33 +101,35 @@ final class Recorder: ObservableObject {
 
         Task {
             do {
-                if includeMic { try await MicrophoneInput.authorize() }
+                if dictation || includeMic { try await MicrophoneInput.authorize() }
                 let folder = try makeSessionFolder()
                 self.folder = folder
-                let systemURL = RecordingTrack.system.audioURL(in: folder)
-                switch source {
-                case .screenKit:
-                    let input = ScreenAudioInput()
-                    readSystem = { input.reading }
-                    stopSystem = { await input.stop() }
-                    try await input.start(url: systemURL)
-                case .application, .system:
-                    var processes: [AudioObjectID]?
-                    if source == .application {
-                        guard let app = try audioApplications().first(where: { $0.id == selectedApp }) else {
-                            throw CaptureError("The selected app disconnected from Core Audio. Play audio in it and refresh the list.")
+                if !dictation {
+                    let systemURL = RecordingTrack.system.audioURL(in: folder)
+                    switch source {
+                    case .screenKit:
+                        let input = ScreenAudioInput()
+                        readSystem = { input.reading }
+                        stopSystem = { await input.stop() }
+                        try await input.start(url: systemURL)
+                    case .application, .system:
+                        var processes: [AudioObjectID]?
+                        if source == .application {
+                            guard let app = try audioApplications().first(where: { $0.id == selectedApp }) else {
+                                throw CaptureError("The selected app disconnected from Core Audio. Play audio in it and refresh the list.")
+                            }
+                            processes = app.processes
                         }
-                        processes = app.processes
+                        let tap = ProcessTap()
+                        readSystem = { tap.reading }
+                        stopSystem = { await Task.detached { tap.stop() }.value }
+                        let selection = processes
+                        try await Task.detached(priority: .userInitiated) {
+                            try tap.start(processes: selection, url: systemURL)
+                        }.value
                     }
-                    let tap = ProcessTap()
-                    readSystem = { tap.reading }
-                    stopSystem = { await Task.detached { tap.stop() }.value }
-                    let selection = processes
-                    try await Task.detached(priority: .userInitiated) {
-                        try tap.start(processes: selection, url: systemURL)
-                    }.value
                 }
-                if includeMic {
+                if dictation || includeMic {
                     let input = MicrophoneInput()
                     mic = input
                     try input.start(url: RecordingTrack.microphone.audioURL(in: folder))
@@ -114,7 +146,10 @@ final class Recorder: ObservableObject {
     func stop() {
         guard phase == .recording else { return }
         phase = .stopping
-        Task { await finish(transcribeAfterSaving: autoTranscribe) }
+        let dictation = isDictating
+        Task {
+            await finish(transcribeAfterSaving: dictation || autoTranscribe, copyToClipboard: dictation)
+        }
     }
 
     func quit() {
@@ -173,7 +208,7 @@ final class Recorder: ObservableObject {
         transcriptionStage = "Canceling transcription…"
     }
 
-    private func transcribe(session: URL) {
+    private func transcribe(session: URL, copyToClipboard: Bool = false) {
         phase = .transcribing
         transcriptionProblem = nil
         transcriptionStage = "Preparing transcription…"
@@ -201,6 +236,18 @@ final class Recorder: ObservableObject {
                 }
                 if !summary.errors.isEmpty {
                     transcriptionProblem = summary.errors.joined(separator: " ")
+                } else if copyToClipboard {
+                    let speech = summary.microphoneText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if speech.isEmpty {
+                        status = "No speech detected."
+                    } else {
+                        NSPasteboard.general.clearContents()
+                        if NSPasteboard.general.setString(speech, forType: .string) {
+                            status = "Dictation copied to clipboard."
+                        } else {
+                            transcriptionProblem = "Transcript saved. Could not copy it to the clipboard."
+                        }
+                    }
                 }
             } catch {
                 if Task.isCancelled {
@@ -242,7 +289,9 @@ final class Recorder: ObservableObject {
         }
     }
 
-    private func finish(reason: String? = nil, transcribeAfterSaving: Bool = false) async {
+    private func finish(
+        reason: String? = nil, transcribeAfterSaving: Bool = false, copyToClipboard: Bool = false
+    ) async {
         phase = .stopping
         monitor?.cancel()
         monitor = nil
@@ -273,9 +322,10 @@ final class Recorder: ObservableObject {
         self.folder = nil
         problem = NSOrderedSet(array: errors).array.compactMap { $0 as? String }.joined(separator: " ")
         if problem?.isEmpty == true { problem = nil }
+        isDictating = false
         phase = .ready
         if transcribeAfterSaving, let savedSession {
-            transcribe(session: savedSession)
+            transcribe(session: savedSession, copyToClipboard: copyToClipboard && errors.isEmpty)
         }
     }
 }

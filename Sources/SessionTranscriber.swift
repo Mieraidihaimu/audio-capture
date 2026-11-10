@@ -24,6 +24,7 @@ enum RecordingTrack: String, CaseIterable {
 struct TranscriptionSummary {
     var savedCount = 0
     var errors: [String] = []
+    var microphoneText: String?
 }
 
 actor SessionTranscriber {
@@ -68,11 +69,12 @@ actor SessionTranscriber {
                     decodeOptions: decodingOptions
                 )
                 try Task.checkCancellation()
-                let lines = results.flatMap(\.segments).compactMap { segment -> String? in
-                    let speech = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !speech.isEmpty else { return nil }
-                    return "[\(timestamp(segment.start))] \(speech)"
+                let speech = results.flatMap(\.segments).compactMap { segment -> (start: Float, text: String)? in
+                    let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return nil }
+                    return (start: segment.start, text: text)
                 }
+                let lines = speech.map { "[\(timestamp($0.start))] \($0.text)" }
                 let text = lines.isEmpty ? "No speech detected.\n" : lines.joined(separator: "\n") + "\n"
 
                 // Move a complete file into place without replacing an existing transcript.
@@ -82,6 +84,9 @@ actor SessionTranscriber {
                 try Task.checkCancellation()
                 try FileManager.default.moveItem(at: temporary, to: track.transcriptURL(in: session))
                 summary.savedCount += 1
+                if track == .microphone {
+                    summary.microphoneText = speech.map(\.text).joined(separator: " ")
+                }
             } catch {
                 try Task.checkCancellation()
                 summary.errors.append("\(track.title) transcription failed. \(error.localizedDescription)")

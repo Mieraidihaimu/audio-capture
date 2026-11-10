@@ -9,7 +9,7 @@ struct AudioCaptureApp: App {
             CapturePanel(recorder: recorder)
         } label: {
             Image(systemName: statusIcon)
-                .accessibilityLabel(recorder.phase == .transcribing ? "Audio Capture transcribing" : "Audio Capture")
+                .accessibilityLabel(statusDescription)
         }
         .menuBarExtraStyle(.window)
     }
@@ -20,6 +20,11 @@ struct AudioCaptureApp: App {
         case .starting, .recording, .stopping: "record.circle.fill"
         case .transcribing: "text.bubble"
         }
+    }
+
+    private var statusDescription: String {
+        if recorder.isDictating { return "Audio Capture dictating" }
+        return recorder.phase == .transcribing ? "Audio Capture transcribing" : "Audio Capture"
     }
 }
 
@@ -40,10 +45,17 @@ private struct CapturePanel: View {
                 transcriptionControls
             } else {
                 captureButton
-                Button("Transcribe a Session…", action: recorder.chooseSessionToTranscribe)
-                    .buttonStyle(.link)
-                    .font(.subheadline)
-                    .disabled(!idle)
+                if !recorder.isDictating {
+                    Button("Dictate · ⌥Space", action: recorder.toggleDictation)
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
+                        .disabled(!recorder.canDictate)
+                        .help("Press Option–Space to start dictation, then press again to finish and copy the text.")
+                    Button("Transcribe a Session…", action: recorder.chooseSessionToTranscribe)
+                        .buttonStyle(.link)
+                        .font(.subheadline)
+                        .disabled(!idle)
+                }
             }
             messages
             Divider()
@@ -81,7 +93,8 @@ private struct CapturePanel: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Audio Capture").font(.headline)
-                Text("Local audio and transcription").font(.caption).foregroundStyle(.secondary)
+                Text(recorder.isDictating ? "Microphone dictation" : "Local audio and transcription")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             Label(phaseLabel, systemImage: "circle.fill")
@@ -170,8 +183,8 @@ private struct CapturePanel: View {
 
     private var levels: some View {
         VStack(spacing: 8) {
-            meter("System", symbol: "speaker.wave.2", reading: recorder.systemReading, enabled: true)
-            meter("Mic", symbol: "mic", reading: recorder.micReading, enabled: recorder.includeMic)
+            meter("System", symbol: "speaker.wave.2", reading: recorder.systemReading, enabled: !recorder.isDictating)
+            meter("Mic", symbol: "mic", reading: recorder.micReading, enabled: recorder.includeMic || recorder.isDictating)
         }
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
@@ -207,7 +220,7 @@ private struct CapturePanel: View {
         Button {
             if recording { recorder.stop() } else { recorder.start() }
         } label: {
-            Label(recording ? "Stop Recording" : "Start Recording",
+            Label(captureTitle,
                   systemImage: recording ? "stop.fill" : "record.circle")
                 .frame(maxWidth: .infinity)
         }
@@ -215,6 +228,11 @@ private struct CapturePanel: View {
         .tint(recording ? Color.red : Color.accentColor)
         .controlSize(.large)
         .disabled(!recorder.canStart && !recording)
+    }
+
+    private var captureTitle: String {
+        if recorder.isDictating { return "Finish & Copy · ⌥Space" }
+        return recording ? "Stop Recording" : "Start Recording"
     }
 
     private var transcriptionControls: some View {
@@ -229,7 +247,7 @@ private struct CapturePanel: View {
     }
 
     @ViewBuilder private var messages: some View {
-        ForEach([recorder.problem, recorder.transcriptionProblem].compactMap { $0 }, id: \.self) { problem in
+        ForEach([recorder.problem, recorder.transcriptionProblem, recorder.shortcutProblem].compactMap { $0 }, id: \.self) { problem in
             Label(problem, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.orange)

@@ -14,13 +14,20 @@ enum CaptureSource: String, CaseIterable, Identifiable {
 final class Recorder: ObservableObject {
     enum Phase { case ready, starting, recording, stopping, choosingSession, transcribing }
 
-    @Published var source: CaptureSource = .application
+    @Published var source: CaptureSource {
+        didSet { UserDefaults.standard.set(source.rawValue, forKey: "captureSource") }
+    }
     @Published var selectedApp: String?
-    @Published var includeMic = false
-    @Published var autoTranscribe = true
+    @Published var includeMic: Bool {
+        didSet { UserDefaults.standard.set(includeMic, forKey: "includeMicrophone") }
+    }
+    @Published var autoTranscribe: Bool {
+        didSet { UserDefaults.standard.set(autoTranscribe, forKey: "transcribeAfterRecording") }
+    }
 
     @Published private(set) var phase = Phase.ready
     @Published private(set) var apps: [AudioApplication] = []
+    @Published private(set) var appListProblem: String?
     @Published private(set) var status: String?
     @Published private(set) var problem: String?
     @Published private(set) var lastSession: URL?
@@ -51,9 +58,13 @@ final class Recorder: ObservableObject {
     private var shortcutHeld = false
 
     var canStart: Bool { phase == .ready && (source != .application || selectedApp != nil) }
-    var canDictate: Bool { phase == .ready || phase == .recording && isDictating }
 
     init() {
+        let defaults = UserDefaults.standard
+        source = defaults.string(forKey: "captureSource").flatMap(CaptureSource.init(rawValue:)) ?? .application
+        includeMic = defaults.bool(forKey: "includeMicrophone")
+        autoTranscribe = defaults.object(forKey: "transcribeAfterRecording") as? Bool ?? true
+
         do {
             dictationShortcut = try DictationShortcut(
                 onPress: { [weak self] in self?.beginShortcutDictation() },
@@ -94,11 +105,11 @@ final class Recorder: ObservableObject {
             let available = try audioApplications()
             apps = available.filter { $0.playing || $0.id == selectedApp }
             if !apps.contains(where: { $0.id == selectedApp }) { selectedApp = nil }
-            problem = nil
+            appListProblem = nil
         } catch {
             apps = []
             selectedApp = nil
-            problem = error.localizedDescription
+            appListProblem = error.localizedDescription
         }
     }
 

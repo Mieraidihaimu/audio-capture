@@ -5,7 +5,7 @@ A native menu bar recorder with WhisperKit transcription for **macOS Tahoe 26 or
 ## Try it
 
 1. Unzip the app, open **Audio Capture.app**, and click the waveform icon in the menu bar.
-2. Choose a system audio source.
+2. Click **Set Up Recording** or the gear icon to open **Settings**, then choose a system audio source.
 
    | Source | What it captures | macOS permission |
    | --- | --- | --- |
@@ -13,10 +13,10 @@ A native menu bar recorder with WhisperKit transcription for **macOS Tahoe 26 or
    | All output · Core Audio | System-wide playback through a private process tap. | System Audio Recording |
    | ScreenCaptureKit | System audio from a stream attached to the main display. The app registers only the audio output. | Screen & System Audio Recording |
 
-3. Turn on **Include microphone** if you want a second track, then click **Start Recording**. Grant the applicable macOS permissions when prompted. Startup can wait for your response. Use the level meters to verify the sources while audio is playing and while you speak.
-4. Click **Stop Recording**. With **Transcribe after recording** on, WhisperKit starts once the audio files are saved. Click **Last session** to open the audio and transcript files in Finder.
+3. Turn on **Include microphone** in Settings if you want a second track, then return to the menu and click **Start Recording**. Grant the applicable macOS permissions when prompted. Startup can wait for your response. Use the level meters to verify the sources while audio is playing and while you speak.
+4. Click **Stop Recording**. With **Transcribe after recording** on, WhisperKit starts once the audio files are saved. In **Settings → Library**, click **Show Last Session in Finder** to open the audio and transcript files.
 
-**Recordings** opens `~/Library/Application Support/Audio Capture/Recordings`. Each session folder can contain `system.caf` and `microphone.caf`, both 32-bit floating-point PCM. The tracks retain their input sample rates. Their start times and clocks are independent, so align them manually if you mix them.
+**Show Recordings in Finder** opens `~/Library/Application Support/Audio Capture/Recordings`. Each session folder can contain `system.caf` and `microphone.caf`, both 32-bit floating-point PCM. The tracks retain their input sample rates. Their start times and clocks are independent, so align them manually if you mix them.
 
 Selected-app mode includes audio from all tabs and windows sharing the tapped processes. The tap can restore previously tapped processes by bundle ID when they relaunch. If the app starts an additional audio helper, play audio and refresh the list before starting a new session.
 
@@ -26,11 +26,11 @@ With Audio Capture running, hold **Option–Space** to record microphone dictati
 
 You can also click **Dictate** in the menu, then **Finish & Copy** to end that recording.
 
-Dictation requests microphone permission on first use and saves its audio and timestamped transcript in a session folder. Use the shortcut once the current recording or transcription finishes. The menu reports a shortcut conflict if another app already uses Option–Space.
+Dictation requests microphone permission on first use and saves its audio and timestamped transcript in a session folder. Use the shortcut once the current recording or transcription finishes. The **Dictation** section in Settings reports a shortcut conflict if another app already uses Option–Space.
 
 ## Browse transcripts
 
-Choose **Transcripts…** in the menu to browse saved transcripts. Select a transcript to read it, use **Copy Text** to copy its speech, or **Show in Finder** to open its location. **Move to Trash** moves that transcript file to the Mac's Trash.
+Choose **Browse Transcripts…** in **Settings → Library** to browse saved transcripts. Select a transcript to read it, use **Copy Text** to copy its speech, or **Show in Finder** to open its location. **Move to Trash** moves that transcript file to the Mac's Trash.
 
 The browser discovers earlier transcripts in the Recordings folder and remembers sessions imported through **Transcribe a Session…**. Use **Refresh** to pick up changes made in Finder.
 
@@ -40,7 +40,7 @@ Transcription runs locally after capture and detects the spoken language. The ap
 
 Each track gets its own UTF-8 transcript, `system.txt` or `microphone.txt`. Timestamps are measured from the start of that track. The system track can include several speakers.
 
-Use **Transcribe a Session…** to select an earlier recording folder or retry a session after an error. Existing transcripts are preserved. **Cancel** leaves audio and any completed transcript files in place. **Stop & Quit** saves audio for later transcription.
+Use **Transcribe a Session…** in **Settings → Library** to select an earlier recording folder or retry a session after an error. Existing transcripts are preserved. **Cancel** in the menu leaves audio and any completed transcript files in place. **Stop & Quit** in Settings saves audio for later transcription.
 
 ## Build from source
 

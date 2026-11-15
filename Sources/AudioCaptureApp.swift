@@ -13,6 +13,10 @@ struct AudioCaptureApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        Settings {
+            CaptureSettingsView(recorder: recorder)
+        }
+
         Window("Transcripts", id: "transcripts") {
             TranscriptsView(library: recorder.transcriptLibrary)
         }
@@ -21,7 +25,8 @@ struct AudioCaptureApp: App {
     }
 
     private var statusIcon: String {
-        switch recorder.phase {
+        if recorder.isDictating { return "mic.fill" }
+        return switch recorder.phase {
         case .ready, .choosingSession: "waveform"
         case .starting, .recording, .stopping: "record.circle.fill"
         case .transcribing: "text.bubble"
@@ -30,244 +35,160 @@ struct AudioCaptureApp: App {
 
     private var statusDescription: String {
         if recorder.isDictating { return "Audio Capture dictating" }
-        return recorder.phase == .transcribing ? "Audio Capture transcribing" : "Audio Capture"
+        switch recorder.phase {
+        case .ready, .choosingSession: return "Audio Capture"
+        case .starting: return "Audio Capture starting"
+        case .recording: return "Audio Capture recording"
+        case .stopping: return "Audio Capture saving"
+        case .transcribing: return "Audio Capture transcribing"
+        }
     }
 }
 
 private struct CapturePanel: View {
     @ObservedObject var recorder: Recorder
-    @Environment(\.openWindow) private var openWindow
-
-    private var idle: Bool { recorder.phase == .ready }
-    private var recording: Bool { recorder.phase == .recording }
-    private var transitioning: Bool { !idle && !recording }
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             header
-            configuration
-                .disabled(!idle)
-            levels
-            if recorder.phase == .transcribing {
-                transcriptionControls
-            } else {
-                captureButton
-                if !recorder.isDictating {
-                    Button("Dictate", action: recorder.toggleDictation)
-                        .frame(maxWidth: .infinity)
-                        .buttonStyle(.bordered)
-                        .disabled(!recorder.canDictate)
-                        .help("Click to start dictation, or hold Option–Space from any app and release to finish.")
-                    Button("Transcribe a Session…", action: recorder.chooseSessionToTranscribe)
-                        .buttonStyle(.link)
-                        .font(.subheadline)
-                        .disabled(!idle)
-                }
-            }
+            controls
             messages
-            Button("Transcripts…", systemImage: "text.bubble") {
-                recorder.transcriptLibrary.reload()
-                openWindow(id: "transcripts")
-                NSApp.activate()
-            }
-            .buttonStyle(.borderless)
-            .font(.subheadline)
-            Divider()
-            HStack(spacing: 12) {
-                Button(action: recorder.showRecordings) {
-                    Label("Recordings", systemImage: "folder")
-                }
-                if recorder.lastSession != nil {
-                    Button("Last session", action: recorder.showLastSession)
-                }
-                Spacer()
-                Button(recording ? "Stop & Quit" : "Quit", action: recorder.quit)
-                    .disabled(transitioning)
-            }
-            .buttonStyle(.borderless)
-            .font(.subheadline)
         }
-        .padding(18)
-        .frame(width: 340)
-        .onAppear {
-            if idle, recorder.source == .application, recorder.apps.isEmpty { recorder.refreshApps() }
-        }
-        .onChange(of: recorder.source) { _, source in
-            if source == .application { recorder.refreshApps() }
-        }
+        .padding(14)
+        .frame(width: 292)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "waveform")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 34, height: 34)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Audio Capture").font(.headline)
-                Text(recorder.isDictating ? "Microphone dictation" : "Local audio and transcription")
-                    .font(.caption).foregroundStyle(.secondary)
+            Text("Audio Capture").font(.headline)
+            Spacer()
+            if recorder.phase == .recording {
+                Label(elapsedTime, systemImage: recorder.isDictating ? "mic.fill" : "record.circle.fill")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("\(recorder.isDictating ? "Dictating" : "Recording"), \(elapsedTime) elapsed")
             }
-            Spacer(minLength: 8)
-            Label(phaseLabel, systemImage: "circle.fill")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(recording ? Color.red : Color.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(.quaternary.opacity(0.45), in: Capsule())
-                .accessibilityLabel(recording ? "Recording, \(phaseLabel) elapsed" : phaseLabel)
+            Button("Settings", systemImage: "gearshape", action: showSettings)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .controlSize(.large)
+                .help("Settings")
         }
     }
 
-    private var phaseLabel: String {
+    private var elapsedTime: String {
+        let seconds = Int(recorder.elapsed.components.seconds)
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    @ViewBuilder private var controls: some View {
         switch recorder.phase {
-        case .ready: return "Ready"
-        case .starting: return "Starting"
+        case .ready:
+            HStack(spacing: 8) {
+                if recorder.canStart {
+                    primaryButton("Start Recording", symbol: "record.circle", action: recorder.start)
+                } else {
+                    primaryButton("Set Up Recording", symbol: "sliders.horizontal.3", action: showSettings)
+                }
+                Button("Dictate", systemImage: "mic", action: recorder.toggleDictation)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .help(recorder.shortcutProblem ?? "Hold Option–Space from any app and release to finish.")
+            }
         case .recording:
-            let seconds = Int(recorder.elapsed.components.seconds)
-            return String(format: "%02d:%02d", seconds / 60, seconds % 60)
-        case .stopping: return "Saving"
-        case .choosingSession: return "Choose session"
-        case .transcribing: return "Transcribing"
+            if recorder.isDictating {
+                primaryButton("Finish & Copy", symbol: "stop.fill", tint: .red, action: recorder.stop)
+            } else {
+                levels
+                primaryButton("Stop Recording", symbol: "stop.fill", tint: .red, action: recorder.stop)
+            }
+        case .starting:
+            progress(recorder.isDictating ? "Preparing microphone…" : "Starting recording…")
+        case .stopping:
+            progress("Saving recording…")
+        case .choosingSession:
+            progress("Choose a recording session…")
+        case .transcribing:
+            HStack(spacing: 8) {
+                progress(recorder.transcriptionStage ?? "Transcribing…")
+                Spacer(minLength: 0)
+                Button("Cancel", action: recorder.cancelTranscription)
+            }
         }
     }
 
-    private var configuration: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Picker("System audio", selection: $recorder.source) {
-                ForEach(CaptureSource.allCases) { source in
-                    Text(source.rawValue).tag(source)
-                }
-            }
-            .pickerStyle(.menu)
+    private func showSettings() {
+        NSApp.activate()
+        openSettings()
+    }
 
-            if recorder.source == .application {
-                HStack(spacing: 8) {
-                    Picker("App", selection: $recorder.selectedApp) {
-                        Text("Choose an app").tag(String?.none)
-                        ForEach(recorder.apps) { app in
-                            Text(app.name).tag(Optional(app.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .disabled(recorder.apps.isEmpty)
+    private func primaryButton(
+        _ title: String, symbol: String, tint: Color = .accentColor, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(tint)
+        .controlSize(.large)
+    }
 
-                    Button(action: recorder.refreshApps) {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .help("Refresh audio apps")
-                    .accessibilityLabel("Refresh audio apps")
-                }
-            }
-
-            Text(sourceDescription)
-                .font(.caption)
+    private func progress(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(title)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Toggle("Include microphone", isOn: $recorder.includeMic)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-            Toggle("Transcribe after recording", isOn: $recorder.autoTranscribe)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-
-            if recorder.autoTranscribe {
-                Text("Transcription runs offline on this Mac.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var sourceDescription: String {
-        switch recorder.source {
-        case .application:
-            return "Play audio in the target app, then refresh the list. The tap includes its current audio processes."
-        case .system:
-            return "Capture playback across apps through a private Core Audio tap."
-        case .screenKit:
-            return "Capture system audio through ScreenCaptureKit. macOS asks for screen recording access."
         }
     }
 
     private var levels: some View {
-        VStack(spacing: 8) {
-            meter("System", symbol: "speaker.wave.2", reading: recorder.systemReading, enabled: !recorder.isDictating)
-            meter("Mic", symbol: "mic", reading: recorder.micReading, enabled: recorder.includeMic || recorder.isDictating)
+        VStack(spacing: 6) {
+            meter("System", symbol: "speaker.wave.2", reading: recorder.systemReading)
+            if recorder.includeMic {
+                meter("Mic", symbol: "mic", reading: recorder.micReading)
+            }
         }
-        .padding(10)
+        .padding(8)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func meter(_ name: String, symbol: String, reading: TrackReading, enabled: Bool) -> some View {
-        let level = recording && enabled ? reading.level : 0
-        return HStack(spacing: 8) {
+    private func meter(_ name: String, symbol: String, reading: TrackReading) -> some View {
+        HStack(spacing: 8) {
             Label(name, systemImage: symbol)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(enabled ? Color.primary : Color.secondary)
                 .frame(width: 65, alignment: .leading)
 
             GeometryReader { geometry in
                 Capsule().fill(.secondary.opacity(0.16))
                 Capsule().fill(Color.accentColor)
-                    .frame(width: geometry.size.width * level)
-                    .animation(.easeOut(duration: 0.16), value: level)
+                    .frame(width: geometry.size.width * reading.level)
+                    .animation(.easeOut(duration: 0.16), value: reading.level)
             }
             .frame(height: 5)
 
-            Text(!enabled ? "Off" : recording && reading.frames == 0 ? "Waiting" : "")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(width: 36, alignment: .trailing)
+            if reading.frames == 0 {
+                Text("Waiting")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(name) audio level")
-        .accessibilityValue(enabled ? "\(Int(level * 100)) percent" : "Off")
-    }
-
-    private var captureButton: some View {
-        Button {
-            if recording { recorder.stop() } else { recorder.start() }
-        } label: {
-            Label(captureTitle,
-                  systemImage: recording ? "stop.fill" : "record.circle")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(recording ? Color.red : Color.accentColor)
-        .controlSize(.large)
-        .disabled(!recorder.canStart && !recording)
-    }
-
-    private var captureTitle: String {
-        if recorder.isDictating { return "Finish & Copy" }
-        return recording ? "Stop Recording" : "Start Recording"
-    }
-
-    private var transcriptionControls: some View {
-        HStack(spacing: 9) {
-            ProgressView()
-                .controlSize(.small)
-            Text(recorder.transcriptionStage ?? "Transcribing…")
-                .font(.subheadline)
-            Spacer(minLength: 4)
-            Button("Cancel", action: recorder.cancelTranscription)
-        }
+        .accessibilityValue(reading.frames == 0 ? "Waiting for audio" : "\(Int(reading.level * 100)) percent")
     }
 
     @ViewBuilder private var messages: some View {
-        ForEach([recorder.problem, recorder.transcriptionProblem, recorder.shortcutProblem].compactMap { $0 }, id: \.self) { problem in
+        ForEach([recorder.problem, recorder.transcriptionProblem].compactMap { $0 }, id: \.self) { problem in
             Label(problem, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        if let status = recorder.status {
+        if recorder.phase == .ready, let status = recorder.status {
             Text(status)
                 .font(.caption)
                 .foregroundStyle(.secondary)

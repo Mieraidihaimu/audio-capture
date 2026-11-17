@@ -30,7 +30,9 @@ Dictation requests microphone permission on first use. After granting access, ho
 
 ## Browse transcripts
 
-Open the menu bar panel to see the three most recent transcripts. Click a preview to read the full transcript, or use the copy button beside it to copy the plain text. **All Transcripts** opens the full library, where you can also show a transcript in Finder or move it to the Trash.
+Open the menu bar panel to see the three most recent transcripts. Click a preview to read the full transcript, use the copy button to copy plain text, or click the star to mark a transcript for later. The filter shows **All**, **Starred**, or **Unstarred** transcripts.
+
+**Open Library** opens the full list. Use **Trash Unstarred…** to move unstarred transcripts from the library to the macOS Trash after confirming the count. The app keeps starred transcripts and audio recordings, and skips sessions that are recording or transcribing.
 
 The browser discovers earlier transcripts in the Recordings folder and remembers sessions imported through **Transcribe a Session…**. Use **Refresh** to pick up changes made in Finder.
 

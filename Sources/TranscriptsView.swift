@@ -3,26 +3,35 @@ import SwiftUI
 struct TranscriptsView: View {
     @ObservedObject var library: TranscriptLibrary
     @Binding var selection: SavedTranscript.ID?
+    @Binding var filter: TranscriptFilter
+    @State private var confirmsBulkTrash = false
+    @State private var pendingTrash: Set<SavedTranscript.ID> = []
+
+    private var visibleEntries: [SavedTranscript] { library.transcripts(matching: filter) }
 
     private var selected: SavedTranscript? {
-        library.entries.first { $0.id == selection }
+        visibleEntries.first { $0.id == selection }
     }
 
     var body: some View {
         NavigationSplitView {
-            List(library.entries, selection: $selection) { entry in
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text(entry.source).fontWeight(.medium)
-                        if library.isBusy(entry) {
-                            Image(systemName: "waveform").foregroundStyle(.secondary)
+            List(visibleEntries, selection: $selection) { entry in
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text(entry.source).fontWeight(.medium)
+                            if library.isBusy(entry) {
+                                Image(systemName: "waveform").foregroundStyle(.secondary)
+                            }
                         }
+                        Text(entry.date, format: .dateTime.month(.abbreviated).day().hour().minute())
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(entry.preview)
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
-                    Text(entry.date, format: .dateTime.month(.abbreviated).day().hour().minute())
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(entry.preview)
-                        .font(.subheadline).foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    TranscriptStarButton(library: library, entry: entry)
                 }
                 .padding(.vertical, 5)
                 .tag(entry.id)
@@ -37,12 +46,29 @@ struct TranscriptsView: View {
             .navigationTitle("Transcripts")
             .navigationSplitViewColumnWidth(min: 230, ideal: 280, max: 360)
             .overlay {
-                if library.entries.isEmpty {
+                if visibleEntries.isEmpty {
                     ContentUnavailableView(
-                        "No transcripts yet", systemImage: "text.bubble",
-                        description: Text("Dictate or transcribe a recording to add it here.")
+                        filter.emptyTitle,
+                        systemImage: filter == .starred ? "star" : "text.bubble"
                     )
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
+                    TranscriptFilterMenu(filter: $filter)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button("Trash Unstarred…", systemImage: "trash", role: .destructive) {
+                    pendingTrash = Set(library.trashableUnstarred.map(\.id))
+                    confirmsBulkTrash = !pendingTrash.isEmpty
+                }
+                .disabled(library.trashableUnstarred.isEmpty)
+                .frame(maxWidth: .infinity)
+                .padding(12)
             }
         } detail: {
             if let selected {
@@ -76,16 +102,59 @@ struct TranscriptsView: View {
             }
         }
         .frame(minWidth: 740, minHeight: 450)
-        .onAppear {
-            library.reload()
-            if selection == nil { selection = library.entries.first?.id }
+        .alert("Move unstarred transcripts to the Trash?", isPresented: $confirmsBulkTrash, presenting: pendingTrash) { ids in
+            Button("Move to Trash", role: .destructive) { library.moveUnstarredToTrash(confirmedIDs: ids) }
+            Button("Cancel", role: .cancel) { }
+        } message: { ids in
+            Text("\(ids.count) \(ids.count == 1 ? "transcript" : "transcripts") will move to the Trash. Audio recordings will stay in place.")
         }
+        .onAppear(perform: library.reload)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             library.reload()
         }
-        .onChange(of: library.entries) { _, entries in
-            if !entries.contains(where: { $0.id == selection }) { selection = entries.first?.id }
+        .onChange(of: visibleEntries.map(\.id), initial: true) { _, ids in
+            if !ids.contains(where: { $0 == selection }) { selection = ids.first }
         }
+    }
+}
+
+struct TranscriptFilterMenu: View {
+    @Binding var filter: TranscriptFilter
+
+    var body: some View {
+        Menu {
+            Picker("Show Transcripts", selection: $filter) {
+                ForEach(TranscriptFilter.allCases, id: \.self) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Label(filter == .all ? "Filter" : filter.rawValue, systemImage: "line.3.horizontal.decrease")
+        }
+        .menuStyle(.borderlessButton)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Filter transcripts")
+    }
+}
+
+struct TranscriptStarButton: View {
+    @ObservedObject var library: TranscriptLibrary
+    let entry: SavedTranscript
+
+    var body: some View {
+        let isStarred = library.isStarred(entry)
+        let title = isStarred ? "Unstar Transcript" : "Star Transcript"
+        Button {
+            library.toggleStar(entry)
+        } label: {
+            Image(systemName: isStarred ? "star.fill" : "star")
+                .foregroundStyle(isStarred ? Color.orange : Color.secondary)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(title)
+        .help(title)
     }
 }
 

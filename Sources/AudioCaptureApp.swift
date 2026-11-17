@@ -4,12 +4,13 @@ import SwiftUI
 struct AudioCaptureApp: App {
     @NSApplicationDelegateAdaptor(CaptureAppDelegate.self) private var appDelegate
     @State private var selectedTranscript: SavedTranscript.ID?
+    @State private var transcriptFilter = TranscriptFilter.all
 
     private var recorder: Recorder { appDelegate.recorder }
 
     var body: some Scene {
         MenuBarExtra {
-            CapturePanel(recorder: recorder, selectedTranscript: $selectedTranscript)
+            CapturePanel(recorder: recorder, selectedTranscript: $selectedTranscript, transcriptFilter: $transcriptFilter)
         } label: {
             CaptureStatusLabel(recorder: recorder)
         }
@@ -20,7 +21,7 @@ struct AudioCaptureApp: App {
         }
 
         Window("Transcripts", id: "transcripts") {
-            TranscriptsView(library: recorder.transcriptLibrary, selection: $selectedTranscript)
+            TranscriptsView(library: recorder.transcriptLibrary, selection: $selectedTranscript, filter: $transcriptFilter)
         }
         .defaultSize(width: 860, height: 560)
         .defaultLaunchBehavior(.suppressed)
@@ -68,6 +69,7 @@ private struct CaptureStatusLabel: View {
 private struct CapturePanel: View {
     @ObservedObject var recorder: Recorder
     @Binding var selectedTranscript: SavedTranscript.ID?
+    @Binding var transcriptFilter: TranscriptFilter
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -76,7 +78,7 @@ private struct CapturePanel: View {
             controls
             messages
             Divider()
-            RecentTranscripts(library: recorder.transcriptLibrary, selection: $selectedTranscript)
+            RecentTranscripts(library: recorder.transcriptLibrary, selection: $selectedTranscript, filter: $transcriptFilter)
         }
         .padding(14)
         .frame(width: 328)
@@ -235,7 +237,12 @@ private struct CapturePanel: View {
 private struct RecentTranscripts: View {
     @ObservedObject var library: TranscriptLibrary
     @Binding var selection: SavedTranscript.ID?
+    @Binding var filter: TranscriptFilter
     @Environment(\.openWindow) private var openWindow
+
+    private var recent: ArraySlice<SavedTranscript> {
+        library.transcripts(matching: filter).prefix(3)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -244,16 +251,17 @@ private struct RecentTranscripts: View {
                     .font(.subheadline.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("All Transcripts") { openTranscript() }
+                TranscriptFilterMenu(filter: $filter)
+                Button("Open Library") { openTranscript() }
                     .buttonStyle(.link)
                     .font(.caption)
             }
-            if library.entries.isEmpty, library.problem == nil {
-                Text("New dictations and recording transcripts will appear here.")
+            if recent.isEmpty, library.problem == nil {
+                Text(filter.emptyTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            ForEach(library.entries.prefix(3)) { entry in
+            ForEach(recent) { entry in
                 HStack(spacing: 8) {
                     Button {
                         openTranscript(entry)
@@ -262,6 +270,7 @@ private struct RecentTranscripts: View {
                             Text(entry.preview.isEmpty ? entry.source : entry.preview)
                                 .font(.subheadline)
                                 .lineLimit(2)
+                                .multilineTextAlignment(.leading)
                             HStack(spacing: 6) {
                                 Text(entry.source)
                                 Text(entry.date, format: .dateTime.month(.abbreviated).day().hour().minute())
@@ -275,6 +284,7 @@ private struct RecentTranscripts: View {
                     .buttonStyle(.borderless)
                     .accessibilityHint("Opens in Transcripts")
 
+                    TranscriptStarButton(library: library, entry: entry)
                     Button("Copy Text", systemImage: "doc.on.doc") { library.copy(entry) }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.borderless)

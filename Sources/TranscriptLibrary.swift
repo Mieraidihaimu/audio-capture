@@ -10,20 +10,59 @@ struct SavedTranscript: Identifiable, Hashable {
     var session: URL { url.deletingLastPathComponent() }
 }
 
+enum TranscriptFilter: String, CaseIterable {
+    case all = "All"
+    case starred = "Starred"
+    case unstarred = "Unstarred"
+
+    var emptyTitle: String {
+        switch self {
+        case .all: "No transcripts yet"
+        case .starred: "No starred transcripts"
+        case .unstarred: "No unstarred transcripts"
+        }
+    }
+}
+
 @MainActor
 final class TranscriptLibrary: ObservableObject {
     @Published private(set) var entries: [SavedTranscript] = []
     @Published private(set) var problem: String?
     @Published private(set) var notice: String?
     @Published var busySession: URL?
+    @Published private var starredIDs: Set<SavedTranscript.ID>
 
     private let recordings: URL
     private let defaults: UserDefaults
     private let importedSessionsKey = "AudioCapture.importedTranscriptSessions"
+    private static let starredIDsKey = "AudioCapture.starredTranscriptIDs"
 
     init(recordings: URL, defaults: UserDefaults = .standard) {
         self.recordings = recordings
         self.defaults = defaults
+        starredIDs = Set(defaults.stringArray(forKey: Self.starredIDsKey) ?? [])
+    }
+
+    func transcripts(matching filter: TranscriptFilter) -> [SavedTranscript] {
+        switch filter {
+        case .all: entries
+        case .starred: entries.filter { isStarred($0) }
+        case .unstarred: entries.filter { !isStarred($0) }
+        }
+    }
+
+    func isStarred(_ entry: SavedTranscript) -> Bool {
+        starredIDs.contains(entry.id)
+    }
+
+    func toggleStar(_ entry: SavedTranscript) {
+        guard entries.contains(where: { $0.id == entry.id }) else { return }
+        if isStarred(entry) {
+            starredIDs.remove(entry.id)
+        } else {
+            starredIDs.insert(entry.id)
+        }
+        defaults.set(starredIDs.sorted(), forKey: Self.starredIDsKey)
     }
 
     func rememberSession(_ session: URL) {
@@ -99,6 +138,37 @@ final class TranscriptLibrary: ObservableObject {
         return Self.normalizedDirectory(entry.session) == Self.normalizedDirectory(busySession)
     }
 
+    var trashableUnstarred: [SavedTranscript] {
+        transcripts(matching: .unstarred).filter { !isBusy($0) }
+    }
+
+    func moveUnstarredToTrash(confirmedIDs: Set<SavedTranscript.ID>) {
+        reload()
+        guard problem == nil else { return }
+        let candidates = trashableUnstarred.filter { confirmedIDs.contains($0.id) }
+        guard !candidates.isEmpty else {
+            notice = "No unstarred transcripts are available to move."
+            return
+        }
+
+        var movedCount = 0
+        var firstError: Error?
+        for entry in candidates {
+            do {
+                _ = try trashFile(entry)
+                movedCount += 1
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+        }
+        reload()
+        notice = movedCount == 1 ? "1 transcript moved to the Trash." : "\(movedCount) transcripts moved to the Trash."
+        if let firstError {
+            let failedCount = candidates.count - movedCount
+            problem = "\(movedCount) moved to the Trash. \(failedCount) could not be moved. \(firstError.localizedDescription)"
+        }
+    }
+
     @discardableResult
     func moveToTrash(_ entry: SavedTranscript) -> URL? {
         guard !isBusy(entry) else {
@@ -109,15 +179,20 @@ final class TranscriptLibrary: ObservableObject {
             guard entries.contains(where: { $0.id == entry.id }) else {
                 throw CaptureError("This transcript is no longer in the library.")
             }
-            var trashed: NSURL?
-            try FileManager.default.trashItem(at: entry.url, resultingItemURL: &trashed)
+            let trashed = try trashFile(entry)
             reload()
             notice = "Transcript moved to Trash."
-            return trashed as URL?
+            return trashed
         } catch {
             problem = "Could not move the transcript to Trash. \(error.localizedDescription)"
             return nil
         }
+    }
+
+    private func trashFile(_ entry: SavedTranscript) throws -> URL? {
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: entry.url, resultingItemURL: &trashed)
+        return trashed as URL?
     }
 
     func reveal(_ entry: SavedTranscript) {

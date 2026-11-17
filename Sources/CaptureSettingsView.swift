@@ -2,7 +2,6 @@ import SwiftUI
 
 struct CaptureSettingsView: View {
     @ObservedObject var recorder: Recorder
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Form {
@@ -27,19 +26,27 @@ struct CaptureSettingsView: View {
             .disabled(recorder.phase != .ready)
 
             Section("Dictation") {
-                LabeledContent("Hold to dictate") {
-                    Text("⌥ Space")
-                        .accessibilityLabel("Option–Space")
+                Picker("Hold to dictate", selection: Binding(
+                    get: { recorder.dictationKey },
+                    set: recorder.changeDictationKey
+                )) {
+                    ForEach(DictationKey.allCases, id: \.self) { key in
+                        Text(key.name).tag(key)
+                    }
                 }
+                .disabled(recorder.phase != .ready)
                 if let problem = recorder.shortcutProblem {
                     Label(problem, systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                    if recorder.activeDictationKey == nil {
+                        Button("Retry Shortcut", action: recorder.installDictationShortcut)
+                            .disabled(recorder.phase != .ready)
+                    }
                 }
             }
 
             Section {
-                Button("Browse Transcripts…", systemImage: "text.bubble", action: showTranscripts)
                 Button("Transcribe a Session…", systemImage: "text.badge.plus", action: recorder.chooseSessionToTranscribe)
                     .disabled(recorder.phase != .ready)
                 Button("Show Recordings in Finder", systemImage: "folder", action: recorder.showRecordings)
@@ -95,11 +102,5 @@ struct CaptureSettingsView: View {
         case .screenKit:
             return "Record playback using ScreenCaptureKit. Requires screen recording access."
         }
-    }
-
-    private func showTranscripts() {
-        recorder.transcriptLibrary.reload()
-        openWindow(id: "transcripts")
-        NSApp.activate()
     }
 }

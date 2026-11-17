@@ -1,26 +1,59 @@
 import Carbon
 
+enum DictationKey: String, CaseIterable {
+    case optionSpace
+    case controlShiftSpace
+
+    var name: String {
+        switch self {
+        case .optionSpace: "Option–Space"
+        case .controlShiftSpace: "Control–Shift–Space"
+        }
+    }
+
+    var symbols: String {
+        switch self {
+        case .optionSpace: "⌥ Space"
+        case .controlShiftSpace: "⌃⇧ Space"
+        }
+    }
+
+    fileprivate var modifiers: UInt32 {
+        switch self {
+        case .optionSpace: UInt32(optionKey)
+        case .controlShiftSpace: UInt32(controlKey | shiftKey)
+        }
+    }
+}
+
 @MainActor
 final class DictationShortcut {
-    private static let identifier = EventHotKeyID(signature: 0x41436170, id: 1)
+    let key: DictationKey
+    private var identifier: EventHotKeyID { EventHotKeyID(signature: 0x41436170, id: key.modifiers) }
     private let onPress: @MainActor () -> Void
     private let onRelease: @MainActor () -> Void
     private var handler: EventHandlerRef?
     private var hotKey: EventHotKeyRef?
     private var isPressed = false
 
-    init(onPress: @escaping @MainActor () -> Void, onRelease: @escaping @MainActor () -> Void) throws {
+    init(
+        key: DictationKey,
+        onPress: @escaping @MainActor () -> Void,
+        onRelease: @escaping @MainActor () -> Void
+    ) throws {
+        self.key = key
         self.onPress = onPress
         self.onRelease = onRelease
+        let target = GetEventDispatcherTarget()
         var eventTypes = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
         ]
         let handlerStatus = InstallEventHandler(
-            GetApplicationEventTarget(),
+            target,
             { _, event, context in
                 guard let event, let context else { return OSStatus(eventNotHandledErr) }
-                // Application event handlers run on the main thread.
+                // The AppKit event loop calls the dispatcher on the main thread.
                 return MainActor.assumeIsolated {
                     let shortcut = Unmanaged<DictationShortcut>.fromOpaque(context).takeUnretainedValue()
                     return shortcut.handle(event)
@@ -30,28 +63,31 @@ final class DictationShortcut {
             Unmanaged.passUnretained(self).toOpaque(), &handler
         )
         guard handlerStatus == noErr else {
-            throw CaptureError("Could not set up Option–Space (macOS \(handlerStatus)).")
+            throw CaptureError("Could not set up \(key.name) (macOS \(handlerStatus)).")
         }
 
         let keyStatus = RegisterEventHotKey(
-            UInt32(kVK_Space), UInt32(optionKey), Self.identifier, GetApplicationEventTarget(),
+            UInt32(kVK_Space), key.modifiers, identifier, target,
             OptionBits(kEventHotKeyExclusive), &hotKey
         )
         guard keyStatus == noErr else {
             if let handler { RemoveEventHandler(handler) }
             handler = nil
-            throw CaptureError("Option–Space is unavailable (macOS \(keyStatus)). Close another app using that shortcut, then reopen Audio Capture.")
+            if keyStatus == eventHotKeyExistsErr {
+                throw CaptureError("\(key.name) is already in use. Choose another shortcut.")
+            }
+            throw CaptureError("\(key.name) could not be registered (macOS \(keyStatus)).")
         }
     }
 
     private func handle(_ event: EventRef) -> OSStatus {
-        var identifier = EventHotKeyID()
+        var eventIdentifier = EventHotKeyID()
         let status = GetEventParameter(
             event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-            nil, MemoryLayout<EventHotKeyID>.size, nil, &identifier
+            nil, MemoryLayout<EventHotKeyID>.size, nil, &eventIdentifier
         )
-        guard status == noErr, identifier.signature == Self.identifier.signature,
-              identifier.id == Self.identifier.id else { return OSStatus(eventNotHandledErr) }
+        guard status == noErr, eventIdentifier.signature == identifier.signature,
+              eventIdentifier.id == identifier.id else { return OSStatus(eventNotHandledErr) }
 
         switch GetEventKind(event) {
         case UInt32(kEventHotKeyPressed):

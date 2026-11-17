@@ -37,6 +37,7 @@ final class Recorder: ObservableObject {
     @Published private(set) var transcriptionStage: String?
     @Published private(set) var transcriptionProblem: String?
     @Published private(set) var isDictating = false
+    @Published private(set) var dictationKey: DictationKey
     @Published private(set) var shortcutProblem: String?
 
     private var monitor: Task<Void, Never>?
@@ -50,6 +51,7 @@ final class Recorder: ObservableObject {
     private static let supportFolder = URL.applicationSupportDirectory
         .appendingPathComponent("Audio Capture", isDirectory: true)
     private static let recordingsFolder = supportFolder.appendingPathComponent("Recordings", isDirectory: true)
+    private static let dictationKeyPreference = "AudioCapture.dictationKey"
 
     private let recordings = recordingsFolder
     private let transcriber = SessionTranscriber()
@@ -58,27 +60,56 @@ final class Recorder: ObservableObject {
     private var shortcutHeld = false
 
     var canStart: Bool { phase == .ready && (source != .application || selectedApp != nil) }
+    var activeDictationKey: DictationKey? { dictationShortcut?.key }
 
     init() {
         let defaults = UserDefaults.standard
         source = defaults.string(forKey: "captureSource").flatMap(CaptureSource.init(rawValue:)) ?? .application
         includeMic = defaults.bool(forKey: "includeMicrophone")
         autoTranscribe = defaults.object(forKey: "transcribeAfterRecording") as? Bool ?? true
+        dictationKey = defaults.string(forKey: Self.dictationKeyPreference).flatMap(DictationKey.init(rawValue:))
+            ?? .optionSpace
+    }
 
-        do {
-            dictationShortcut = try DictationShortcut(
-                onPress: { [weak self] in self?.beginShortcutDictation() },
-                onRelease: { [weak self] in self?.endShortcutDictation() }
-            )
-        } catch {
-            shortcutProblem = error.localizedDescription
+    func installDictationShortcut() {
+        // Try the saved choice first, then fall back for this launch if it is unavailable.
+        let preferred = dictationKey
+        if !registerDictationKey(preferred),
+           let alternate = DictationKey.allCases.first(where: { $0 != preferred }),
+           !registerDictationKey(alternate) {
+            shortcutProblem = "No dictation shortcut is available. Choose another shortcut or retry."
         }
     }
 
-    private func beginShortcutDictation() {
+    func changeDictationKey(_ key: DictationKey) {
+        guard phase == .ready, registerDictationKey(key) else { return }
+        UserDefaults.standard.set(key.rawValue, forKey: Self.dictationKeyPreference)
+    }
+
+    private func registerDictationKey(_ key: DictationKey) -> Bool {
+        if dictationShortcut?.key == key {
+            shortcutProblem = nil
+            return true
+        }
+        do {
+            dictationShortcut = try DictationShortcut(
+                key: key,
+                onPress: { [weak self] in self?.beginShortcutDictation(key) },
+                onRelease: { [weak self] in self?.endShortcutDictation() }
+            )
+            dictationKey = key
+            shortcutProblem = nil
+            return true
+        } catch {
+            shortcutProblem = error.localizedDescription
+            return false
+        }
+    }
+
+    private func beginShortcutDictation(_ key: DictationKey) {
         guard phase == .ready else { return }
         shortcutHeld = true
-        start(dictation: true, requiresHeldShortcut: true)
+        start(dictation: true, shortcut: key)
     }
 
     private func endShortcutDictation() {
@@ -117,7 +148,7 @@ final class Recorder: ObservableObject {
         start(dictation: false)
     }
 
-    private func start(dictation: Bool, requiresHeldShortcut: Bool = false) {
+    private func start(dictation: Bool, shortcut: DictationKey? = nil) {
         guard phase == .ready, dictation || canStart else { return }
         phase = .starting
         isDictating = dictation
@@ -127,12 +158,13 @@ final class Recorder: ObservableObject {
         systemReading = TrackReading()
         micReading = TrackReading()
         elapsed = .zero
-        if dictation { dictationOverlay.show(requiresHeldShortcut: requiresHeldShortcut) }
+        if dictation { dictationOverlay.show(shortcut: shortcut) }
 
         Task {
             do {
                 if dictation || includeMic { try await MicrophoneInput.authorize() }
-                if requiresHeldShortcut, !shortcutHeld {
+                if let shortcut, !shortcutHeld {
+                    status = "Hold \(shortcut.name) again to dictate."
                     isDictating = false
                     phase = .ready
                     dictationOverlay.hide()

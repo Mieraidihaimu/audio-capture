@@ -5,7 +5,7 @@ import SwiftUI
 private final class DictationOverlayState: ObservableObject {
     @Published var level = 0.0
     @Published var isStarting = true
-    @Published var requiresHeldShortcut = true
+    @Published var shortcut: DictationKey?
 }
 
 @MainActor
@@ -13,10 +13,10 @@ final class DictationOverlayController {
     private let state = DictationOverlayState()
     private var panel: NSPanel?
 
-    func show(requiresHeldShortcut: Bool) {
+    func show(shortcut: DictationKey?) {
         state.level = 0
         state.isStarting = true
-        state.requiresHeldShortcut = requiresHeldShortcut
+        state.shortcut = shortcut
 
         if panel == nil {
             let panel = NSPanel(
@@ -94,7 +94,8 @@ private struct DictationOverlayView: View {
     }
 
     private var finishHint: String {
-        state.requiresHeldShortcut ? "Release ⌥Space to transcribe" : "Finish dictation from the menu"
+        if let shortcut = state.shortcut { return "Release \(shortcut.symbols) to transcribe" }
+        return "Finish dictation from the menu"
     }
 
     private func barHeight(_ index: Int, time: TimeInterval) -> Double {

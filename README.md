@@ -22,15 +22,15 @@ Selected-app mode includes audio from all tabs and windows sharing the tapped pr
 
 ## Dictate from any app
 
-With Audio Capture running, hold **Option–Space** to record microphone dictation and release it to finish. A floating waveform appears in the center of the current display and responds to the microphone level. WhisperKit then transcribes the recording and copies plain text to your clipboard, ready for **Command–V**. The menu shows **Dictation copied to clipboard** when it finishes.
+With Audio Capture running, hold **Option–Space** to record microphone dictation and release it to finish. If macOS can't register that shortcut, the app tries **Control–Shift–Space**. The menu shows the active shortcut, and you can change it under **Settings → Dictation**. A floating waveform appears in the center of the current display and responds to the microphone level. WhisperKit then transcribes the recording and copies plain text to your clipboard, ready for **Command–V**.
 
 You can also click **Dictate** in the menu, then **Finish & Copy** to end that recording.
 
-Dictation requests microphone permission on first use and saves its audio and timestamped transcript in a session folder. Use the shortcut once the current recording or transcription finishes. The **Dictation** section in Settings reports a shortcut conflict if another app already uses Option–Space.
+Dictation requests microphone permission on first use. After granting access, hold the shortcut again to record. Dictation saves its audio and timestamped transcript in a session folder. Use the shortcut once the current recording or transcription finishes.
 
 ## Browse transcripts
 
-Choose **Browse Transcripts…** in **Settings → Library** to browse saved transcripts. Select a transcript to read it, use **Copy Text** to copy its speech, or **Show in Finder** to open its location. **Move to Trash** moves that transcript file to the Mac's Trash.
+Open the menu bar panel to see the three most recent transcripts. Click a preview to read the full transcript, or use the copy button beside it to copy the plain text. **All Transcripts** opens the full library, where you can also show a transcript in Finder or move it to the Trash.
 
 The browser discovers earlier transcripts in the Recordings folder and remembers sessions imported through **Transcribe a Session…**. Use **Refresh** to pick up changes made in Finder.
 

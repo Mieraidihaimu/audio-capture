@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TranscriptsView: View {
     @ObservedObject var library: TranscriptLibrary
-    @State private var selection: SavedTranscript.ID?
+    @Binding var selection: SavedTranscript.ID?
 
     private var selected: SavedTranscript? {
         library.entries.first { $0.id == selection }

@@ -2,14 +2,16 @@ import SwiftUI
 
 @main
 struct AudioCaptureApp: App {
-    @StateObject private var recorder = Recorder()
+    @NSApplicationDelegateAdaptor(CaptureAppDelegate.self) private var appDelegate
+    @State private var selectedTranscript: SavedTranscript.ID?
+
+    private var recorder: Recorder { appDelegate.recorder }
 
     var body: some Scene {
         MenuBarExtra {
-            CapturePanel(recorder: recorder)
+            CapturePanel(recorder: recorder, selectedTranscript: $selectedTranscript)
         } label: {
-            Image(systemName: statusIcon)
-                .accessibilityLabel(statusDescription)
+            CaptureStatusLabel(recorder: recorder)
         }
         .menuBarExtraStyle(.window)
 
@@ -18,10 +20,28 @@ struct AudioCaptureApp: App {
         }
 
         Window("Transcripts", id: "transcripts") {
-            TranscriptsView(library: recorder.transcriptLibrary)
+            TranscriptsView(library: recorder.transcriptLibrary, selection: $selectedTranscript)
         }
         .defaultSize(width: 860, height: 560)
         .defaultLaunchBehavior(.suppressed)
+    }
+}
+
+@MainActor
+private final class CaptureAppDelegate: NSObject, NSApplicationDelegate {
+    let recorder = Recorder()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        recorder.installDictationShortcut()
+    }
+}
+
+private struct CaptureStatusLabel: View {
+    @ObservedObject var recorder: Recorder
+
+    var body: some View {
+        Image(systemName: statusIcon)
+            .accessibilityLabel(statusDescription)
     }
 
     private var statusIcon: String {
@@ -47,6 +67,7 @@ struct AudioCaptureApp: App {
 
 private struct CapturePanel: View {
     @ObservedObject var recorder: Recorder
+    @Binding var selectedTranscript: SavedTranscript.ID?
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -54,9 +75,11 @@ private struct CapturePanel: View {
             header
             controls
             messages
+            Divider()
+            RecentTranscripts(library: recorder.transcriptLibrary, selection: $selectedTranscript)
         }
         .padding(14)
-        .frame(width: 292)
+        .frame(width: 328)
     }
 
     private var header: some View {
@@ -85,16 +108,29 @@ private struct CapturePanel: View {
     @ViewBuilder private var controls: some View {
         switch recorder.phase {
         case .ready:
-            HStack(spacing: 8) {
-                if recorder.canStart {
-                    primaryButton("Start Recording", symbol: "record.circle", action: recorder.start)
-                } else {
-                    primaryButton("Set Up Recording", symbol: "sliders.horizontal.3", action: showSettings)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    if recorder.canStart {
+                        primaryButton("Start Recording", symbol: "record.circle", action: recorder.start)
+                    } else {
+                        primaryButton("Set Up Recording", symbol: "sliders.horizontal.3", action: showSettings)
+                    }
+                    Button("Dictate", systemImage: "mic", action: recorder.toggleDictation)
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
                 }
-                Button("Dictate", systemImage: "mic", action: recorder.toggleDictation)
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .help(recorder.shortcutProblem ?? "Hold Option–Space from any app and release to finish.")
+                if let key = recorder.activeDictationKey {
+                    Text("Hold \(key.symbols) to dictate")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Hold \(key.name) to dictate")
+                } else {
+                    Button("Dictation shortcut unavailable", systemImage: "exclamationmark.triangle",
+                           action: showSettings)
+                        .buttonStyle(.link)
+                        .font(.caption)
+                        .help("Open Settings to change the dictation shortcut.")
+                }
             }
         case .recording:
             if recorder.isDictating {
@@ -193,5 +229,72 @@ private struct CapturePanel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+private struct RecentTranscripts: View {
+    @ObservedObject var library: TranscriptLibrary
+    @Binding var selection: SavedTranscript.ID?
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Recent Transcripts")
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button("All Transcripts") { openTranscript() }
+                    .buttonStyle(.link)
+                    .font(.caption)
+            }
+            if library.entries.isEmpty, library.problem == nil {
+                Text("New dictations and recording transcripts will appear here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(library.entries.prefix(3)) { entry in
+                HStack(spacing: 8) {
+                    Button {
+                        openTranscript(entry)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(entry.preview.isEmpty ? entry.source : entry.preview)
+                                .font(.subheadline)
+                                .lineLimit(2)
+                            HStack(spacing: 6) {
+                                Text(entry.source)
+                                Text(entry.date, format: .dateTime.month(.abbreviated).day().hour().minute())
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityHint("Opens in Transcripts")
+
+                    Button("Copy Text", systemImage: "doc.on.doc") { library.copy(entry) }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help("Copy transcript text")
+                }
+                .padding(8)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 7))
+            }
+            if let message = library.problem ?? library.notice {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(library.problem == nil ? Color.secondary : .orange)
+            }
+        }
+        .onAppear(perform: library.reload)
+    }
+
+    private func openTranscript(_ entry: SavedTranscript? = nil) {
+        if let entry { selection = entry.id }
+        openWindow(id: "transcripts")
+        NSApp.activate()
     }
 }

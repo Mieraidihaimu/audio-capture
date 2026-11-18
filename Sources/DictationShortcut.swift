@@ -1,4 +1,7 @@
 import Carbon
+import os
+
+private let log = Logger(subsystem: "AudioCapture", category: "DictationShortcut")
 
 enum DictationKey: String, CaseIterable {
     case optionSpace
@@ -41,6 +44,7 @@ final class DictationShortcut {
         onPress: @escaping @MainActor () -> Void,
         onRelease: @escaping @MainActor () -> Void
     ) throws {
+        log.info("Registering dictation shortcut: \(key.name)")
         self.key = key
         self.onPress = onPress
         self.onRelease = onRelease
@@ -63,6 +67,7 @@ final class DictationShortcut {
             Unmanaged.passUnretained(self).toOpaque(), &handler
         )
         guard handlerStatus == noErr else {
+            log.error("Failed to install event handler for \(key.name): macOS \(handlerStatus)")
             throw CaptureError("Could not set up \(key.name) (macOS \(handlerStatus)).")
         }
 
@@ -74,10 +79,13 @@ final class DictationShortcut {
             if let handler { RemoveEventHandler(handler) }
             handler = nil
             if keyStatus == eventHotKeyExistsErr {
+                log.error("Dictation shortcut \(key.name) is already in use")
                 throw CaptureError("\(key.name) is already in use. Choose another shortcut.")
             }
+            log.error("Failed to register hot key \(key.name): macOS \(keyStatus)")
             throw CaptureError("\(key.name) could not be registered (macOS \(keyStatus)).")
         }
+        log.info("Dictation shortcut \(key.name) registered successfully")
     }
 
     private func handle(_ event: EventRef) -> OSStatus {
@@ -105,6 +113,7 @@ final class DictationShortcut {
     }
 
     isolated deinit {
+        log.info("Unregistering dictation shortcut: \(self.key.name)")
         if let hotKey { UnregisterEventHotKey(hotKey) }
         if let handler { RemoveEventHandler(handler) }
     }

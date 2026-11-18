@@ -1,5 +1,8 @@
 import Foundation
+import os
 import WhisperKit
+
+private let log = Logger(subsystem: "AudioCapture", category: "SessionTranscriber")
 
 enum RecordingTrack: String, CaseIterable {
     case system
@@ -47,8 +50,12 @@ actor SessionTranscriber {
             throw CaptureError("Choose a session folder containing system.caf or microphone.caf.")
         }
         let pending = tracks.filter { !FileManager.default.fileExists(atPath: $0.transcriptURL(in: session).path) }
-        guard !pending.isEmpty else { return TranscriptionSummary() }
+        guard !pending.isEmpty else {
+            log.info("Session already fully transcribed: \(session.lastPathComponent)")
+            return TranscriptionSummary()
+        }
 
+        log.info("Starting transcription for \(session.lastPathComponent) (\(pending.count) track(s) pending)")
         await progress("Preparing Whisper Base model…")
         let pipeline = try await prepareModel()
         let inputOptions = AudioInputOptions(audioLoadingMode: .incremental)
@@ -84,14 +91,17 @@ actor SessionTranscriber {
                 try Task.checkCancellation()
                 try FileManager.default.moveItem(at: temporary, to: track.transcriptURL(in: session))
                 summary.savedCount += 1
+                log.info("Saved transcript for \(track.title.lowercased()) in \(session.lastPathComponent)")
                 if track == .microphone {
                     summary.microphoneText = speech.map(\.text).joined(separator: " ")
                 }
             } catch {
                 try Task.checkCancellation()
+                log.error("\(track.title) transcription failed: \(error.localizedDescription)")
                 summary.errors.append("\(track.title) transcription failed. \(error.localizedDescription)")
             }
         }
+        log.info("Finished transcription for \(session.lastPathComponent): \(summary.savedCount) saved, \(summary.errors.count) errors")
         return summary
     }
 
@@ -118,6 +128,7 @@ actor SessionTranscriber {
         #endif
 
         do {
+            log.info("Loading WhisperKit model from \(modelFolder.lastPathComponent)...")
             let loaded = try await WhisperKit(WhisperKitConfig(
                 modelFolder: modelFolder.path,
                 tokenizerFolder: tokenizerFolder,
@@ -128,9 +139,11 @@ actor SessionTranscriber {
             ))
             try Task.checkCancellation()
             pipeline = loaded
+            log.info("WhisperKit model ready")
             return loaded
         } catch {
             try Task.checkCancellation()
+            log.error("WhisperKit model loading failed: \(error.localizedDescription)")
             throw CaptureError("Could not load the bundled Whisper Base files. \(error.localizedDescription)")
         }
     }

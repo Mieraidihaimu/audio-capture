@@ -8,6 +8,8 @@
     <string>Audio Capture</string>
     <key>CFBundleExecutable</key>
     <string>AudioCapture</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>local.poc.AudioCapture</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -30,5 +32,7 @@
     <string>Audio Capture saves your microphone to a separate local track when you enable it.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Audio Capture uses ScreenCaptureKit to receive system audio for your recording.</string>
+    <key>SUFeedURL</key>
+    <string>https://example.com/appcast.xml</string>
 </dict>
 </plist>

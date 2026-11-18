@@ -3,6 +3,8 @@ import AudioToolbox
 import Foundation
 import os
 
+private let log = Logger(subsystem: "AudioCapture", category: "PCMTrack")
+
 struct CaptureError: LocalizedError {
     let errorDescription: String?
 
@@ -53,6 +55,7 @@ final class PCMTrack: @unchecked Sendable {
               format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
               format.mFormatFlags & kAudioFormatFlagIsBigEndian == 0,
               format.mBitsPerChannel == 32, format.mBytesPerFrame == channels * 4 else {
+            log.error("Unsupported PCM format: rate=\(format.mSampleRate), ch=\(format.mChannelsPerFrame), flags=\(format.mFormatFlags)")
             throw CaptureError("This input uses an unsupported PCM format.")
         }
 
@@ -162,11 +165,13 @@ final class PCMTrack: @unchecked Sendable {
         guard let file else { return reading.error }
         let status = ExtAudioFileDispose(file)
         if status != noErr {
+            log.error("Closing \(self.url.lastPathComponent) failed (Core Audio \(status))")
             fail("Closing \(url.lastPathComponent) failed (Core Audio \(status)).")
         } else if reading.frames == 0 {
             do {
                 try FileManager.default.removeItem(at: url)
             } catch {
+                log.error("Removing empty \(self.url.lastPathComponent) failed: \(error.localizedDescription)")
                 fail("Removing the empty \(url.lastPathComponent) failed. \(error.localizedDescription)")
             }
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CaptureSettingsView: View {
     @ObservedObject var recorder: Recorder
+    @ObservedObject var updater: UpdaterService
 
     var body: some View {
         Form {
@@ -44,6 +45,11 @@ struct CaptureSettingsView: View {
                             .disabled(recorder.phase != .ready)
                     }
                 }
+            }
+
+            Section("Updates") {
+                Button("Check for Updates…", action: updater.checkForUpdates)
+                    .disabled(!updater.canCheckForUpdates)
             }
 
             Section {

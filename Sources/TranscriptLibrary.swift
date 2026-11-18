@@ -1,4 +1,7 @@
 import AppKit
+import os
+
+private let log = Logger(subsystem: "AudioCapture", category: "TranscriptLibrary")
 
 struct SavedTranscript: Identifiable, Hashable {
     let url: URL
@@ -106,8 +109,10 @@ final class TranscriptLibrary: ObservableObject {
             entries = found.sorted {
                 $0.date == $1.date ? $0.id < $1.id : $0.date > $1.date
             }
+            log.info("Transcript library reloaded: \(self.entries.count) transcript(s)")
             problem = nil
         } catch {
+            log.error("Failed to load transcripts: \(error.localizedDescription)")
             problem = "Could not load transcripts. \(error.localizedDescription)"
         }
     }
@@ -163,8 +168,10 @@ final class TranscriptLibrary: ObservableObject {
         }
         reload()
         notice = movedCount == 1 ? "1 transcript moved to the Trash." : "\(movedCount) transcripts moved to the Trash."
+        log.info("Moved \(movedCount) unstarred transcript(s) to Trash")
         if let firstError {
             let failedCount = candidates.count - movedCount
+            log.error("Failed to move \(failedCount) transcript(s) to Trash: \(firstError.localizedDescription)")
             problem = "\(movedCount) moved to the Trash. \(failedCount) could not be moved. \(firstError.localizedDescription)"
         }
     }

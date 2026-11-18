@@ -1,6 +1,9 @@
 import AppKit
 import CoreAudio
 import Foundation
+import os
+
+private let log = Logger(subsystem: "AudioCapture", category: "Recorder")
 
 enum CaptureSource: String, CaseIterable, Identifiable {
     case application = "Selected app"
@@ -64,8 +67,8 @@ final class Recorder: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
-        source = defaults.string(forKey: "captureSource").flatMap(CaptureSource.init(rawValue:)) ?? .application
-        includeMic = defaults.bool(forKey: "includeMicrophone")
+        source = defaults.string(forKey: "captureSource").flatMap(CaptureSource.init(rawValue:)) ?? .system
+        includeMic = defaults.object(forKey: "includeMicrophone") as? Bool ?? true
         autoTranscribe = defaults.object(forKey: "transcribeAfterRecording") as? Bool ?? true
         dictationKey = defaults.string(forKey: Self.dictationKeyPreference).flatMap(DictationKey.init(rawValue:))
             ?? .optionSpace
@@ -150,6 +153,7 @@ final class Recorder: ObservableObject {
 
     private func start(dictation: Bool, shortcut: DictationKey? = nil) {
         guard phase == .ready, dictation || canStart else { return }
+        log.debug("Phase → starting (dictation=\(dictation), source=\(self.source.rawValue))")
         phase = .starting
         isDictating = dictation
         status = nil
@@ -205,9 +209,11 @@ final class Recorder: ObservableObject {
                 }
 
                 phase = .recording
+                log.info("Recording started")
                 if dictation { dictationOverlay.update(level: 0, isStarting: false) }
                 startMonitor()
             } catch {
+                log.error("Start failed: \(error.localizedDescription)")
                 await finish(reason: error.localizedDescription)
             }
         }
@@ -215,6 +221,7 @@ final class Recorder: ObservableObject {
 
     func stop() {
         guard phase == .recording else { return }
+        log.info("Recording stopping")
         shortcutHeld = false
         dictationOverlay.hide()
         phase = .stopping
@@ -281,6 +288,7 @@ final class Recorder: ObservableObject {
     }
 
     private func transcribe(session: URL, copyToClipboard: Bool = false) {
+        log.info("Transcribe requested for \(session.lastPathComponent, privacy: .public)")
         phase = .transcribing
         transcriptLibrary.busySession = session
         transcriptionProblem = nil
@@ -398,6 +406,11 @@ final class Recorder: ObservableObject {
             }
         }
         self.folder = nil
+        if !errors.isEmpty {
+            log.error("Recording finished with errors: \(errors.joined(separator: "; "))")
+        } else {
+            log.info("Recording finished successfully (saved=\(savedSession?.lastPathComponent ?? "none", privacy: .public))")
+        }
         problem = NSOrderedSet(array: errors).array.compactMap { $0 as? String }.joined(separator: " ")
         if problem?.isEmpty == true { problem = nil }
         isDictating = false

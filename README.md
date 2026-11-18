@@ -5,7 +5,7 @@ A native menu bar recorder with WhisperKit transcription for **macOS Tahoe 26 or
 ## Try it
 
 1. Unzip the app, open **Audio Capture.app**, and click the waveform icon in the menu bar.
-2. Click **Set Up Recording** or the gear icon to open **Settings**, then choose a system audio source.
+2. Audio Capture defaults to **All output · Core Audio** with **Include microphone** enabled. Use the gear icon to change either setting.
 
    | Source | What it captures | macOS permission |
    | --- | --- | --- |
@@ -13,7 +13,7 @@ A native menu bar recorder with WhisperKit transcription for **macOS Tahoe 26 or
    | All output · Core Audio | System-wide playback through a private process tap. | System Audio Recording |
    | ScreenCaptureKit | System audio from a stream attached to the main display. The app registers only the audio output. | Screen & System Audio Recording |
 
-3. Turn on **Include microphone** in Settings if you want a second track, then return to the menu and click **Start Recording**. Grant the applicable macOS permissions when prompted. Startup can wait for your response. Use the level meters to verify the sources while audio is playing and while you speak.
+3. Click **Start Recording** in the menu. Grant the applicable macOS permissions when prompted. Startup can wait for your response. Use the level meters to verify the sources while audio is playing and while you speak.
 4. Click **Stop Recording**. With **Transcribe after recording** on, WhisperKit starts once the audio files are saved. In **Settings → Library**, click **Show Last Session in Finder** to open the audio and transcript files.
 
 **Show Recordings in Finder** opens `~/Library/Application Support/Audio Capture/Recordings`. Each session folder can contain `system.caf` and `microphone.caf`, both 32-bit floating-point PCM. The tracks retain their input sample rates. Their start times and clocks are independent, so align them manually if you mix them.

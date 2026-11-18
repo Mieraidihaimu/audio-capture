@@ -67,9 +67,28 @@ done
 cp "$scratch/arm64/checkouts/argmax-oss-swift/"{LICENSE,NOTICES} \
     "$model_resources/"
 cp "$source_dir/Whisper Base Notices.txt" "$model_resources/"
+cp "$source_dir/Sources/PrivacyInfo.xcprivacy" "$bundle/Contents/Resources/PrivacyInfo.xcprivacy"
+cp "$source_dir/Sources/AppIcon.icns" "$bundle/Contents/Resources/AppIcon.icns"
+
+mkdir -p "$bundle/Contents/Frameworks"
+if [[ -d "$bin_path/Sparkle.framework" ]]; then
+    cp -R "$bin_path/Sparkle.framework" "$bundle/Contents/Frameworks/Sparkle.framework"
+fi
+
 xcrun lipo -create "$scratch/AudioCapture-arm64" "$scratch/AudioCapture-x86_64" \
     -output "$bundle/Contents/MacOS/AudioCapture"
-codesign --sign - --options runtime --entitlements "$source_dir/AudioCapture.entitlements" "$bundle"
+
+sign_identity="${DEVELOPER_ID_APPLICATION:--}"
+sign_args=(--sign "$sign_identity" --options runtime)
+if [[ "$sign_identity" != "-" ]]; then
+    sign_args+=(--timestamp)
+fi
+
+if [[ -d "$bundle/Contents/Frameworks/Sparkle.framework" ]]; then
+    codesign "${sign_args[@]}" "$bundle/Contents/Frameworks/Sparkle.framework"
+fi
+
+codesign "${sign_args[@]}" --entitlements "$source_dir/AudioCapture.entitlements" "$bundle"
 codesign --verify --strict "$bundle"
 mkdir -p "$(dirname "$destination")"
 mv "$bundle" "$destination"

@@ -7,6 +7,7 @@ struct AudioCaptureApp: App {
     @State private var transcriptFilter = TranscriptFilter.all
 
     private var recorder: Recorder { appDelegate.recorder }
+    private var updater: UpdaterService { appDelegate.updater }
 
     var body: some Scene {
         MenuBarExtra {
@@ -17,7 +18,7 @@ struct AudioCaptureApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            CaptureSettingsView(recorder: recorder)
+            CaptureSettingsView(recorder: recorder, updater: updater)
         }
 
         Window("Transcripts", id: "transcripts") {
@@ -31,6 +32,7 @@ struct AudioCaptureApp: App {
 @MainActor
 private final class CaptureAppDelegate: NSObject, NSApplicationDelegate {
     let recorder = Recorder()
+    let updater = UpdaterService()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         recorder.installDictationShortcut()

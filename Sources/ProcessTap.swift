@@ -1,6 +1,9 @@
 import AppKit
 import CoreAudio
 import Foundation
+import os
+
+private let log = Logger(subsystem: "AudioCapture", category: "ProcessTap")
 
 struct AudioApplication: Identifiable {
     let id: String
@@ -100,6 +103,7 @@ final class ProcessTap: @unchecked Sendable {
 
     // Lifecycle calls are serialized by the controller. The IO block owns only the track.
     func start(processes: [AudioObjectID]?, url: URL) throws {
+        log.info("Starting process tap: \(processes != nil ? "selected app" : "system-wide", privacy: .public)")
         let description: CATapDescription
         if let processes {
             description = CATapDescription(stereoMixdownOfProcesses: processes)
@@ -153,9 +157,13 @@ final class ProcessTap: @unchecked Sendable {
     }
 
     func stop() -> String? {
+        log.info("Stopping process tap")
         var errors: [String] = []
         func clean(_ status: OSStatus, _ operation: String) {
-            if status != noErr { errors.append("\(operation) failed (Core Audio \(status)).") }
+            if status != noErr {
+                log.error("\(operation) failed (Core Audio \(status))")
+                errors.append("\(operation) failed (Core Audio \(status)).")
+            }
         }
 
         if let io {

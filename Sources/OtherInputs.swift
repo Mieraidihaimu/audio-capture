@@ -1,6 +1,9 @@
 import AVFoundation
 import CoreGraphics
+import os
 import ScreenCaptureKit
+
+private let log = Logger(subsystem: "AudioCapture", category: "OtherInputs")
 
 @MainActor
 final class MicrophoneInput {
@@ -23,6 +26,7 @@ final class MicrophoneInput {
     }
 
     func start(url: URL) throws {
+        log.info("Starting microphone input (url=\(url.lastPathComponent))")
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0 else {
@@ -47,6 +51,7 @@ final class MicrophoneInput {
     }
 
     func stop() -> String? {
+        log.info("Stopping microphone input")
         if let observation {
             NotificationCenter.default.removeObserver(observation)
             self.observation = nil
@@ -69,6 +74,7 @@ final class ScreenAudioInput {
     var reading: TrackReading { output?.reading ?? TrackReading() }
 
     func start(url: URL) async throws {
+        log.info("Starting ScreenCaptureKit audio input (url=\(url.lastPathComponent))")
         guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else {
             throw CaptureError("Allow Screen & System Audio Recording for Audio Capture in System Settings, then reopen the app if macOS asks.")
         }
@@ -100,6 +106,7 @@ final class ScreenAudioInput {
     }
 
     func stop() async -> String? {
+        log.info("Stopping ScreenCaptureKit audio input")
         var failure: String?
         if let stream, let output {
             if started {
@@ -146,6 +153,7 @@ private final class ScreenAudioOutput: NSObject, SCStreamOutput, SCStreamDelegat
     }
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
+        log.error("ScreenCaptureKit stream stopped with error: \(error.localizedDescription)")
         queue.async {
             self.failure = "ScreenCaptureKit stopped. \(error.localizedDescription)"
         }
